@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Human Anatomy Interactive Atlas</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            bg: '#0a0f1d',
+                            panel: '#111827',
+                            border: '#1f293d',
+                            accent: '#38bdf8',
+                            glow: '#0284c7',
+                            card: 'rgba(17, 24, 39, 0.85)',
+                            bone: '#e2e8f0',
+                            muscle: '#f43f5e',
+                            organ: '#f97316',
+                            nerve: '#eab308',
+                            vessel: '#06b6d4'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0f1d;
+            color: #f3f4f6;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glow-effect {
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        }
+
+        /* Tooltip styling */
+        #3d-tooltip {
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+        }
+
+        /* Custom slider styling */
+        input[type=range] {
+            accent-color: #38bdf8;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased">
+
+    <!-- Top Header / App Navigation -->
+    <header class="h-14 border-b border-gray-800 bg-slate-950/80 backdrop-blur px-4 flex items-center justify-between z-30 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-sky-500/30">
+                <i class="fa-solid font-bold fa-cube"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base tracking-wide bg-gradient-to-r from-white via-slate-200 to-sky-400 bg-clip-text text-transparent">ANATOMIA 3D</h1>
+                <p class="text-[10px] text-sky-400 font-medium tracking-wider uppercase">Interactive Human Body Atlas</p>
+            </div>
+        </div>
+
+        <!-- Mode Switches & Tools Header Bar -->
+        <div class="flex items-center space-x-2">
+            <button id="mode-explore-btn" onclick="setAppMode('explore')" class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-sky-500 text-white shadow-md shadow-sky-500/20 transition-all">
+                <i class="fa-solid fa-microscope"></i>
+                <span>Explore</span>
+            </button>
+            <button id="mode-quiz-btn" onclick="setAppMode('quiz')" class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <span>Quiz Mode</span>
+            </button>
+            <div class="h-5 w-px bg-slate-800 mx-1"></div>
+            <button id="btn-fullscreen" onclick="toggleFullscreen()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Body Container -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Left Sidebar: System Hierarchy & Search -->
+        <aside id="sidebar" class="w-80 border-r border-slate-800/80 bg-slate-950/70 backdrop-blur-md flex flex-col z-20 transition-all duration-300 ease-in-out relative">
+            <!-- Search Input -->
+            <div class="p-3 border-b border-slate-800">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="search-input" placeholder="Search structure (e.g., Femur, Heart)..." 
+                           class="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors"
+                           oninput="handleSearch(this.value)">
+                    <button id="clear-search" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs: Systems / Tree -->
+            <div class="flex border-b border-slate-800 text-xs font-medium bg-slate-900/50">
+                <button id="tab-systems-btn" onclick="switchSidebarTab('systems')" class="flex-1 py-2.5 text-center text-sky-400 border-b-2 border-sky-400 transition-all">Systems</button>
+                <button id="tab-tree-btn" onclick="switchSidebarTab('tree')" class="flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all">Hierarchy</button>
+            </div>
+
+            <!-- Tab Content: System Controls -->
+            <div id="tab-systems" class="flex-1 overflow-y-auto p-3 space-y-4">
+                <div class="text-[11px] font-semibold tracking-wider text-slate-400 uppercase mb-2">Anatomical Layer Opacity</div>
+                
+                <!-- System Visibility & Opacity Sliders -->
+                <div class="space-y-3" id="system-sliders-container">
+                    <!-- Populated dynamically via JS -->
+                </div>
+
+                <!-- Tools & Filters -->
+                <div class="pt-4 border-t border-slate-800 space-y-3">
+                    <div class="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">Interactive Tools</div>
+                    
+                    <!-- Cross Section / Slice Tool Slider -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                        <div class="flex items-center justify-between text-xs mb-1.5">
+                            <span class="text-slate-300 font-medium flex items-center space-x-1.5">
+                                <i class="fa-solid fa-scissors text-sky-400 text-xs"></i>
+                                <span>Sagittal Plane Slice</span>
+                            </span>
+                            <span id="slice-val" class="text-slate-500 text-[10px]">Off</span>
+                        </div>
+                        <input type="range" id="slice-slider" min="-1.5" max="1.5" step="0.02" value="1.5" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer" oninput="updateCrossSection(this.value)">
+                    </div>
+
+                    <!-- Exploded View Slider -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                        <div class="flex items-center justify-between text-xs mb-1.5">
+                            <span class="text-slate-300 font-medium flex items-center space-x-1.5">
+                                <i class="fa-solid fa-arrows-up-down-left-right text-sky-400 text-xs"></i>
+                                <span>Exploded View Expansion</span>
+                            </span>
+                            <span id="explode-val" class="text-slate-500 text-[10px]">0%</span>
+                        </div>
+                        <input type="range" id="explode-slider" min="0" max="1" step="0.01" value="0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer" oninput="updateExplodedView(this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Structure Hierarchy Tree -->
+            <div id="tab-tree" class="flex-1 overflow-y-auto p-3 hidden space-y-1" id="tree-container">
+                <!-- Structure Tree Populated via JS -->
+            </div>
+        </aside>
+
+        <!-- Center Viewport (Three.js WebGL Canvas Container) -->
+        <main class="flex-1 relative bg-slate-950 overflow-hidden flex flex-col">
+            <!-- 3D Canvas Element -->
+            <div id="canvas-container" class="w-full h-full absolute inset-0 cursor-grab active:cursor-grabbing"></div>
+
+            <!-- Dynamic Floating HUD Controls Bar -->
+            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 glass-panel rounded-full px-4 py-2 flex items-center space-x-3 z-10 shadow-2xl">
+                <button onclick="resetCameraView()" class="p-2 text-slate-300 hover:text-sky-400 hover:bg-slate-800/60 rounded-full transition-all" title="Reset Camera View">
+                    <i class="fa-solid fa-arrows-to-dot text-sm"></i>
+                </button>
+                <div class="h-4 w-px bg-slate-700"></div>
+                <button onclick="isolateSelectedStructure()" id="btn-isolate" class="p-2 text-slate-300 hover:text-sky-400 hover:bg-slate-800/60 rounded-full transition-all disabled:opacity-30" title="Isolate Selected Structure">
+                    <i class="fa-solid fa-filter text-sm"></i>
+                </button>
+                <button onclick="hideSelectedStructure()" id="btn-hide" class="p-2 text-slate-300 hover:text-rose-400 hover:bg-slate-800/60 rounded-full transition-all disabled:opacity-30" title="Hide Structure">
+                    <i class="fa-solid fa-eye-slash text-sm"></i>
+                </button>
+                <button onclick="showAllStructures()" class="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800/60 rounded-full transition-all" title="Show All Hidden Structures">
+                    <i class="fa-solid fa-eye text-sm"></i>
+                </button>
+                <div class="h-4 w-px bg-slate-700"></div>
+                <button onclick="toggleWireframe()" id="btn-wireframe" class="p-2 text-slate-300 hover:text-sky-400 hover:bg-slate-800/60 rounded-full transition-all" title="Toggle Wireframe Mode">
+                    <i class="fa-solid fa-cubes-stacked text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Quiz Top Banner Overlay (hidden by default) -->
+            <div id="quiz-hud" class="hidden absolute top-4 left-1/2 -translate-x-1/2 glass-panel rounded-xl px-6 py-3 border border-amber-500/30 flex items-center space-x-6 z-10 shadow-xl">
+                <div>
+                    <div class="text-[10px] text-amber-400 uppercase font-bold tracking-wider">Identification Challenge</div>
+                    <div id="quiz-question" class="text-sm font-semibold text-white">Click on the: <span class="text-amber-300 underline underline-offset-4 font-bold">Femur</span></div>
+                </div>
+                <div class="flex items-center space-x-4 border-l border-slate-700 pl-5">
+                    <div class="text-center">
+                        <div class="text-[10px] text-slate-400 uppercase font-semibold">Score</div>
+                        <div id="quiz-score" class="text-base font-bold text-emerald-400">0</div>
+                    </div>
+                    <button onclick="nextQuizQuestion()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-colors">
+                        Skip
+                    </button>
+                </div>
+            </div>
+
+            <!-- Hover Tooltip -->
+            <div id="3d-tooltip" class="hidden fixed glass-panel px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 z-30 pointer-events-none shadow-lg border border-sky-400/30">
+                <span id="tooltip-text">Structure</span>
+            </div>
+        </main>
+
+        <!-- Right Sidebar / Selected Structure Anatomy Inspector -->
+        <aside id="detail-panel" class="w-96 border-l border-slate-800/80 bg-slate-950/80 backdrop-blur-md flex flex-col z-20 transition-all duration-300">
+            <!-- Header -->
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-notes-medical text-sky-400 text-sm"></i>
+                    <h2 class="font-bold text-sm text-slate-100">Anatomical Details</h2>
+                </div>
+                <span id="structure-system-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">
+                    Select Part
+                </span>
+            </div>
+
+            <!-- Detail Body Container -->
+            <div id="detail-content" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <!-- Empty Placeholder state when nothing selected -->
+                <div id="empty-detail-state" class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                    <i class="fa-solid fa-hand-pointer text-3xl mb-3 text-slate-600 animate-bounce"></i>
+                    <p class="text-xs font-medium">Click on any 3D organ, bone, or muscle to inspect detailed anatomical structure.</p>
+                </div>
+
+                <!-- Active Structure Details Container (Hidden when empty) -->
+                <div id="active-detail-state" class="hidden space-y-4">
+                    <div>
+                        <h3 id="detail-title" class="text-xl font-extrabold text-white">Femur</h3>
+                        <p id="detail-latin" class="text-xs text-sky-400 italic font-medium">Os femoris</p>
+                    </div>
+
+                    <!-- Tabs: Overview / Function / Clinical Notes -->
+                    <div class="space-y-3">
+                        <div class="bg-slate-900/90 rounded-lg p-3 border border-slate-800">
+                            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
+                                <i class="fa-solid fa-align-left text-sky-400"></i>
+                                <span>Overview</span>
+                            </h4>
+                            <p id="detail-description" class="text-xs text-slate-300 leading-relaxed">
+                                Longest and strongest bone in the human body...
+                            </p>
+                        </div>
+
+                        <div class="bg-slate-900/90 rounded-lg p-3 border border-slate-800">
+                            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
+                                <i class="fa-solid fa-gears text-emerald-400"></i>
+                                <span>Primary Function</span>
+                            </h4>
+                            <p id="detail-function" class="text-xs text-slate-300 leading-relaxed">
+                                Supports weight and facilitates leg movement...
+                            </p>
+                        </div>
+
+                        <div class="bg-slate-900/90 rounded-lg p-3 border border-slate-800">
+                            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
+                                <i class="fa-solid fa-stethoscope text-amber-400"></i>
+                                <span>Clinical Notes</span>
+                            </h4>
+                            <p id="detail-clinical" class="text-xs text-slate-300 leading-relaxed">
+                                Susceptible to fractures in high-impact trauma or elderly osteoporosis...
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <script>
+        /**
+         * Comprehensive Anatomical Dataset with structure details and 3D procedural positioning
+         */
+        const ANATOMY_DATA = [
+            // SKELETAL SYSTEM
+            {
+                id: 'skull',
+                name: 'Skull',
+                latin: 'Cranium',
+                system: 'skeletal',
+                color: 0xe2e8f0,
+                shape: 'skull',
+                position: { x: 0, y: 1.65, z: 0 },
+                scale: { x: 0.22, y: 0.25, z: 0.25 },
+                description: 'The bone structure that forms the head in the human skeleton. It supports the structures of the face and provides a protective cavity for the brain.',
+                function: 'Protection of the brain, brainstem, and sensory organs; anchors facial muscles.',
+                clinical: 'Fractures of the skull can cause intracranial hemorrhage or damage to brain parenchyma.'
+            },
+            {
+                id: 'spine',
+                name: 'Vertebral Column (Spine)',
+                latin: 'Columna vertebralis',
+                system: 'skeletal',
+                color: 0xd1d5db,
+                shape: 'spine',
+                position: { x: 0, y: 0.8, z: -0.05 },
+                scale: { x: 0.08, y: 1.1, z: 0.08 },
+                description: 'A flexible column composed of 33 vertebrae extending from the cranium to the pelvis.',
+                function: 'Encloses and protects the spinal cord, supports body weight, and enables torso movement.',
+                clinical: 'Herniated discs and scoliosis are common spinal disorders causing nerve compression or posture asymmetry.'
+            },
+            {
+                id: 'ribcage',
+                name: 'Rib Cage & Sternum',
+                latin: 'Cavea thoracis',
+                system: 'skeletal',
+                color: 0xe2e8f0,
+                shape: 'ribcage',
+                position: { x: 0, y: 1.05, z: 0 },
+                scale: { x: 0.42, y: 0.5, z: 0.3 },
+                description: 'An arrangement of 12 pairs of ribs joined to the vertebral column posteriorly and sternum anteriorly.',
+                function: 'Protects vital thoracic organs (heart and lungs) and aids in respiratory expansion.',
+                clinical: 'Rib fractures can lead to pneumothorax if sharp bone fragments puncture the pulmonary pleura.'
+            },
+            {
+                id: 'pelvis',
+                name: 'Pelvis (Hip Bone)',
+                latin: 'Pelvis',
+                system: 'skeletal',
+                color: 0xcfceca,
+                shape: 'pelvis',
+                position: { x: 0, y: 0.25, z: 0 },
+                scale: { x: 0.48, y: 0.3, z: 0.32 },
+                description: 'A basin-shaped ring of bones connecting the vertebral column to the lower limbs.',
+                function: 'Transfers upper body weight to lower limbs and protects pelvic visceral organs.',
+                clinical: 'Pelvic fractures typically occur during high-energy trauma and carry risk of significant blood loss.'
+            },
+            {
+                id: 'femur_r',
+                name: 'Right Femur',
+                latin: 'Os femoris dextrum',
+                system: 'skeletal',
+                color: 0xdedcd7,
+                shape: 'bone_long',
+                position: { x: 0.22, y: -0.35, z: 0 },
+                scale: { x: 0.09, y: 0.8, z: 0.09 },
+                description: 'The thigh bone, which is the longest, heaviest, and strongest bone in the human body.',
+                function: 'Transmits body weight from pelvis to tibia and serves as major muscle insertion site.',
+                clinical: 'Femoral neck fractures are particularly prevalent among elderly patients with osteoporosis.'
+            },
+            {
+                id: 'femur_l',
+                name: 'Left Femur',
+                latin: 'Os femoris sinistrum',
+                system: 'skeletal',
+                color: 0xdedcd7,
+                shape: 'bone_long',
+                position: { x: -0.22, y: -0.35, z: 0 },
+                scale: { x: 0.09, y: 0.8, z: 0.09 },
+                description: 'The thigh bone, forming the upper section of the lower limb.',
+                function: 'Supports body standing, walking, and running dynamics.',
+                clinical: 'High-velocity impacts can cause shaft fractures requiring intramedullary nailing.'
+            },
+
+            // MUSCULAR SYSTEM
+            {
+                id: 'pectoralis',
+                name: 'Pectoralis Major',
+                latin: 'Musculus pectoralis major',
+                system: 'muscular',
+                color: 0xf43f5e,
+                shape: 'chest_muscle',
+                position: { x: 0, y: 1.12, z: 0.15 },
+                scale: { x: 0.44, y: 0.28, z: 0.1 },
+                description: 'A thick, fan-shaped muscle situated at the chest of the human body.',
+                function: 'Responsible for adduction, flexion, and medial rotation of the humerus at the shoulder joint.',
+                clinical: 'Tears can occur during heavy weightlifting or contact sports.'
+            },
+            {
+                id: 'biceps_r',
+                name: 'Right Biceps Brachii',
+                latin: 'Musculus biceps brachii',
+                system: 'muscular',
+                color: 0xe11d48,
+                shape: 'limb_muscle',
+                position: { x: 0.48, y: 0.95, z: 0.02 },
+                scale: { x: 0.1, y: 0.4, z: 0.1 },
+                description: 'A two-headed muscle that lies on the upper arm between the shoulder and the elbow.',
+                function: 'Flexion of the elbow joint and supination of the forearm.',
+                clinical: 'Distal biceps tendon rupture presents with a "Popeye" muscle deformity.'
+            },
+            {
+                id: 'biceps_l',
+                name: 'Left Biceps Brachii',
+                latin: 'Musculus biceps brachii',
+                system: 'muscular',
+                color: 0xe11d48,
+                shape: 'limb_muscle',
+                position: { x: -0.48, y: 0.95, z: 0.02 },
+                scale: { x: 0.1, y: 0.4, z: 0.1 },
+                description: 'Left upper arm muscle responsible for arm lifting and rotation.',
+                function: 'Flexion and supination of forearm.',
+                clinical: 'Tendinitis can occur with repetitive overhead shoulder movements.'
+            },
+            {
+                id: 'quads_r',
+                name: 'Right Quadriceps Femoris',
+                latin: 'Musculus quadriceps femoris',
+                system: 'muscular',
+                color: 0xbe123c,
+                shape: 'limb_muscle',
+                position: { x: 0.22, y: -0.32, z: 0.06 },
+                scale: { x: 0.14, y: 0.7, z: 0.14 },
+                description: 'A large muscle group that includes the four prevailing muscles on the front of the thigh.',
+                function: 'Extends the knee joint and flexes the hip joint.',
+                clinical: 'Strains are common in sprinting and kicking athletic events.'
+            },
+            {
+                id: 'quads_l',
+                name: 'Left Quadriceps Femoris',
+                latin: 'Musculus quadriceps femoris',
+                system: 'muscular',
+                color: 0xbe123c,
+                shape: 'limb_muscle',
+                position: { x: -0.22, y: -0.32, z: 0.06 },
+                scale: { x: 0.14, y: 0.7, z: 0.14 },
+                description: 'Left front thigh muscle group providing leg extensor force.',
+                function: 'Extends the leg at the knee joint.',
+                clinical: 'Quadriceps weakness alters gait mechanics and patellar tracking.'
+            },
+
+            // ORGAN SYSTEM
+            {
+                id: 'brain',
+                name: 'Brain',
+                latin: 'Encephalon',
+                system: 'organs',
+                color: 0xfb7185,
+                shape: 'brain',
+                position: { x: 0, y: 1.68, z: 0.02 },
+                scale: { x: 0.18, y: 0.18, z: 0.2 },
+                description: 'The central organ of the human nervous system located inside the cranium.',
+                function: 'Controls motor functions, sensory perception, cognition, emotion, and autonomic balance.',
+                clinical: 'Ischemic strokes occur when cerebral arterial blood supply is compromised.'
+            },
+            {
+                id: 'heart',
+                name: 'Heart',
+                latin: 'Cor',
+                system: 'organs',
+                color: 0xd97706,
+                shape: 'heart',
+                position: { x: 0.04, y: 1.05, z: 0.05 },
+                scale: { x: 0.16, y: 0.18, z: 0.16 },
+                description: 'A muscular organ in most animals, which pumps blood through the blood vessels of the circulatory system.',
+                function: 'Pumps oxygenated blood to tissues and deoxygenated blood to the lungs.',
+                clinical: 'Coronary artery disease can lead to myocardial infarction.'
+            },
+            {
+                id: 'lungs',
+                name: 'Lungs',
+                latin: 'Pulmones',
+                system: 'organs',
+                color: 0xf97316,
+                shape: 'lungs',
+                position: { x: 0, y: 1.08, z: 0.01 },
+                scale: { x: 0.36, y: 0.42, z: 0.22 },
+                description: 'A pair of breathing organs located within the chest that remove carbon dioxide and bring oxygen into the blood.',
+                function: 'Facilitates gas exchange between atmospheric air and the circulatory system.',
+                clinical: 'Pneumonia and COPD restrict respiratory membrane surface efficiency.'
+            },
+            {
+                id: 'liver',
+                name: 'Liver',
+                latin: 'Hepar',
+                system: 'organs',
+                color: 0xca8a04,
+                shape: 'liver',
+                position: { x: -0.08, y: 0.72, z: 0.04 },
+                scale: { x: 0.25, y: 0.16, z: 0.2 },
+                description: 'The largest internal organ responsible for metabolic detoxification and bile synthesis.',
+                function: 'Processes nutrients, synthesizes plasma proteins, and neutralizes metabolic toxins.',
+                clinical: 'Cirrhosis causes irreversible fibrotic scarring of hepatic tissue.'
+            },
+
+            // CARDIOVASCULAR SYSTEM
+            {
+                id: 'aorta',
+                name: 'Aorta & Major Arteries',
+                latin: 'Aorta et Arteriae',
+                system: 'cardiovascular',
+                color: 0xef4444,
+                shape: 'vessels',
+                position: { x: 0, y: 0.7, z: -0.02 },
+                scale: { x: 0.12, y: 1.1, z: 0.12 },
+                description: 'The main systemic artery arising from the left ventricle carrying oxygenated blood.',
+                function: 'Distributes oxygen-rich blood throughout systemic circulation.',
+                clinical: 'Aortic aneurysms represent life-threatening structural arterial ballooning.'
+            },
+            {
+                id: 'vena_cava',
+                name: 'Vena Cava & Major Veins',
+                latin: 'Vena Cava',
+                system: 'cardiovascular',
+                color: 0x0284c7,
+                shape: 'vessels',
+                position: { x: 0.05, y: 0.7, z: -0.02 },
+                scale: { x: 0.1, y: 1.1, z: 0.1 },
+                description: 'Large venous channels draining deoxygenated systemic blood back into the right atrium.',
+                function: 'Returns deoxygenated blood from upper and lower body to the heart.',
+                clinical: 'Deep vein thrombosis (DVT) in lower limbs can embolize to pulmonary arteries.'
+            },
+
+            // NERVOUS SYSTEM
+            {
+                id: 'spinal_cord',
+                name: 'Spinal Cord & Main Nerves',
+                latin: 'Medulla spinalis',
+                system: 'nervous',
+                color: 0xeab308,
+                shape: 'nerve_tree',
+                position: { x: 0, y: 0.75, z: -0.05 },
+                scale: { x: 0.18, y: 1.3, z: 0.12 },
+                description: 'A long, fragile tube-like structure that begins at the end of the brainstem and continues down almost to the bottom of the spine.',
+                function: 'Transmits nerve signals between the brain and the rest of the body.',
+                clinical: 'Traumatic spinal cord injury causes permanent loss of sensation and motor paralysis below the lesion level.'
+            }
+        ];
+
+        // System Configurations and Default Opacity
+        const SYSTEMS = {
+            skeletal: { name: 'Skeletal System', color: '#e2e8f0', icon: 'fa-bone', opacity: 1.0, visible: true },
+            muscular: { name: 'Muscular System', color: '#f43f5e', icon: 'fa-child', opacity: 0.85, visible: true },
+            organs: { name: 'Internal Organs', color: '#f97316', icon: 'fa-heart-pulse', opacity: 1.0, visible: true },
+            cardiovascular: { name: 'Cardiovascular System', color: '#06b6d4', icon: 'fa-droplet', opacity: 0.7, visible: true },
+            nervous: { name: 'Nervous System', color: '#eab308', icon: 'fa-bolt', opacity: 0.8, visible: true }
+        };
+
+        // Global App State
+        let scene, camera, renderer, controls;
+        let anatomicalMeshMap = new Map(); // id -> THREE.Mesh
+        let raycaster, mouse;
+        let hoveredMesh = null;
+        let selectedMesh = null;
+        let appMode = 'explore'; // 'explore' or 'quiz'
+        let currentQuizItem = null;
+        let quizScore = 0;
+        let clippingPlane;
+
+        /**
+         * Initialize Three.js 3D WebGL World
+         */
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0f1d);
+            scene.fog = new THREE.FogExp2(0x0a0f1d, 0.15);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+            camera.position.set(0, 1.0, 3.2);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.localClippingEnabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Orbit Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 6;
+            controls.minDistance = 0.8;
+            controls.target.set(0, 0.7, 0);
+
+            // Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            mainLight.position.set(2, 4, 3);
+            mainLight.castShadow = true;
+            scene.add(mainLight);
+
+            const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.4);
+            fillLight.position.set(-3, 1, -2);
+            scene.add(fillLight);
+
+            const rimLight = new THREE.DirectionalLight(0xf43f5e, 0.3);
+            rimLight.position.set(0, -3, -2);
+            scene.add(rimLight);
+
+            // Clipping Plane for Cross-section / Slicing
+            clippingPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1.5);
+
+            // Raycaster for Picking
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Build Anatomical Models
+            buildAnatomyModels();
+
+            // Setup Interactions
+            window.addEventListener('resize', onWindowResize);
+            container.addEventListener('mousemove', onMouseMove);
+            container.addEventListener('click', onClickCanvas);
+
+            // Render Loop
+            animate();
+        }
+
+        /**
+         * Procedurally constructs realistic 3D mesh geometries for anatomy parts
+         */
+        function createAnatomyGeometry(type) {
+            let geom;
+            switch(type) {
+                case 'skull':
+                    geom = new THREE.SphereGeometry(1, 32, 24);
+                    geom.scale(1, 1.2, 1.1);
+                    break;
+                case 'spine':
+                    geom = new THREE.CylinderGeometry(0.5, 0.6, 2, 16, 20);
+                    break;
+                case 'ribcage':
+                    geom = new THREE.TorusGeometry(1, 0.15, 12, 32);
+                    geom.scale(1, 1.3, 0.8);
+                    break;
+                case 'pelvis':
+                    geom = new THREE.TorusGeometry(1, 0.25, 12, 24, Math.PI * 1.2);
+                    geom.rotateX(Math.PI / 2);
+                    break;
+                case 'bone_long':
+                    geom = new THREE.CylinderGeometry(0.4, 0.4, 2, 16);
+                    break;
+                case 'chest_muscle':
+                    geom = new THREE.BoxGeometry(1.2, 0.8, 0.4);
+                    break;
+                case 'limb_muscle':
+                    geom = new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.5, 1, 8, 16) : new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
+                    break;
+                case 'brain':
+                    geom = new THREE.SphereGeometry(1, 24, 20);
+                    geom.scale(1, 0.85, 1.15);
+                    break;
+                case 'heart':
+                    geom = new THREE.DodecahedronGeometry(1, 2);
+                    geom.scale(0.9, 1.2, 0.9);
+                    break;
+                case 'lungs':
+                    geom = new THREE.BoxGeometry(1.2, 1.2, 0.8);
+                    break;
+                case 'liver':
+                    geom = new THREE.ConeGeometry(1, 1, 16);
+                    geom.rotateZ(-Math.PI / 3);
+                    break;
+                case 'vessels':
+                case 'nerve_tree':
+                    geom = new THREE.CylinderGeometry(0.2, 0.1, 2, 12);
+                    break;
+                default:
+                    geom = new THREE.SphereGeometry(1, 16, 16);
+            }
+            return geom;
+        }
+
+        /**
+         * Construct all anatomy objects in 3D scene
+         */
+        function buildAnatomyModels() {
+            ANATOMY_DATA.forEach(data => {
+                const geometry = createAnatomyGeometry(data.shape);
+                const systemConfig = SYSTEMS[data.system];
+
+                const material = new THREE.MeshStandardMaterial({
+                    color: data.color,
+                    roughness: 0.4,
+                    metalness: 0.1,
+                    transparent: true,
+                    opacity: systemConfig ? systemConfig.opacity : 1.0,
+                    clippingPlanes: [clippingPlane],
+                    clipShadows: true
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(data.position.x, data.position.y, data.position.z);
+                mesh.scale.set(data.scale.x, data.scale.y, data.scale.z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+
+                // Attach custom metadata
+                mesh.userData = { ...data, originalPosition: { ...data.position } };
+
+                scene.add(mesh);
+                anatomicalMeshMap.set(data.id, mesh);
+            });
+        }
+
+        /**
+         * Mouse Movement & Raycasting Hover Handler
+         */
+        function onMouseMove(event) {
+            const container = document.getElementById('canvas-container');
+            const rect = container.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const visibleMeshes = Array.from(anatomicalMeshMap.values()).filter(m => m.visible);
+            const intersects = raycaster.intersectObjects(visibleMeshes);
+
+            const tooltip = document.getElementById('3d-tooltip');
+
+            if (intersects.length > 0) {
+                const firstHit = intersects[0].object;
+                if (hoveredMesh !== firstHit) {
+                    if (hoveredMesh && hoveredMesh !== selectedMesh) {
+                        unhighlightMesh(hoveredMesh);
+                    }
+                    hoveredMesh = firstHit;
+                    if (hoveredMesh !== selectedMesh) {
+                        highlightMesh(hoveredMesh, 0x38bdf8);
+                    }
+                }
+                
+                // Position Tooltip near cursor
+                tooltip.style.left = (event.clientX + 12) + 'px';
+                tooltip.style.top = (event.clientY + 12) + 'px';
+                tooltip.classList.remove('hidden');
+                document.getElementById('tooltip-text').innerText = hoveredMesh.userData.name;
+                container.style.cursor = 'pointer';
+            } else {
+                if (hoveredMesh && hoveredMesh !== selectedMesh) {
+                    unhighlightMesh(hoveredMesh);
+                }
+                hoveredMesh = null;
+                tooltip.classList.add('hidden');
+                container.style.cursor = 'grab';
+            }
+        }
+
+        /**
+         * Canvas Click Handler for Structure Selection
+         */
+        function onClickCanvas() {
+            if (hoveredMesh) {
+                if (appMode === 'quiz') {
+                    handleQuizSelection(hoveredMesh);
+                } else {
+                    selectStructure(hoveredMesh);
+                }
+            }
+        }
+
+        /**
+         * Select and focus on a specific anatomical structure
+         */
+        function selectStructure(mesh) {
+            if (selectedMesh && selectedMesh !== mesh) {
+                unhighlightMesh(selectedMesh);
+            }
+
+            selectedMesh = mesh;
+            highlightMesh(selectedMesh, 0x38bdf8);
+
+            // Enable HUD buttons
+            document.getElementById('btn-isolate').disabled = false;
+            document.getElementById('btn-hide').disabled = false;
+
+            // Smooth camera zoom towards selected object
+            focusCameraOnMesh(selectedMesh);
+
+            // Render details in side panel
+            renderStructureDetails(selectedMesh.userData);
+        }
+
+        function highlightMesh(mesh, hexColor) {
+            mesh.material.emissive = new THREE.Color(hexColor);
+            mesh.material.emissiveIntensity = 0.4;
+        }
+
+        function unhighlightMesh(mesh) {
+            mesh.material.emissive = new THREE.Color(0x000000);
+            mesh.material.emissiveIntensity = 0.0;
+        }
+
+        /**
+         * Smooth camera transition using TWEEN
+         */
+        function focusCameraOnMesh(mesh) {
+            const targetPos = mesh.position;
+            
+            new TWEEN.Tween(controls.target)
+                .to({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, 800)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            const offsetDir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+            const newCamPos = new THREE.Vector3().addVectors(targetPos, offsetDir.multiplyScalar(1.2));
+
+            new TWEEN.Tween(camera.position)
+                .to({ x: newCamPos.x, y: newCamPos.y, z: newCamPos.z }, 800)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+        }
+
+        function resetCameraView() {
+            new TWEEN.Tween(controls.target)
+                .to({ x: 0, y: 0.7, z: 0 }, 800)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            new TWEEN.Tween(camera.position)
+                .to({ x: 0, y: 1.0, z: 3.2 }, 800)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+        }
+
+        /**
+         * Render Structure Detail Information Card
+         */
+        function renderStructureDetails(data) {
+            document.getElementById('empty-detail-state').classList.add('hidden');
+            document.getElementById('active-detail-state').classList.remove('hidden');
+
+            document.getElementById('detail-title').innerText = data.name;
+            document.getElementById('detail-latin').innerText = data.latin;
+            document.getElementById('detail-description').innerText = data.description;
+            document.getElementById('detail-function').innerText = data.function;
+            document.getElementById('detail-clinical').innerText = data.clinical;
+
+            const badge = document.getElementById('structure-system-badge');
+            const system = SYSTEMS[data.system];
+            badge.innerText = system ? system.name : data.system;
+            badge.style.color = system ? system.color : '#fff';
+        }
+
+        /**
+         * Build system opacity controls dynamically in left sidebar
+         */
+        function buildSystemControls() {
+            const container = document.getElementById('system-sliders-container');
+            container.innerHTML = '';
+
+            Object.keys(SYSTEMS).forEach(sysKey => {
+                const sys = SYSTEMS[sysKey];
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 space-y-2';
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid ${sys.icon} text-xs" style="color: ${sys.color}"></i>
+                            <span class="text-xs font-semibold text-slate-200">${sys.name}</span>
+                        </div>
+                        <button onclick="toggleSystemVisibility('${sysKey}')" id="vis-btn-${sysKey}" class="text-slate-400 hover:text-white text-xs">
+                            <i class="fa-solid ${sys.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <input type="range" min="0" max="1" step="0.05" value="${sys.opacity}" 
+                               class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                               oninput="updateSystemOpacity('${sysKey}', this.value)">
+                        <span id="opacity-val-${sysKey}" class="text-[10px] text-slate-400 font-mono w-7 text-right">${Math.round(sys.opacity * 100)}%</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateSystemOpacity(systemKey, val) {
+            const opacity = parseFloat(val);
+            SYSTEMS[systemKey].opacity = opacity;
+            document.getElementById(`opacity-val-${systemKey}`).innerText = `${Math.round(opacity * 100)}%`;
+
+            anatomicalMeshMap.forEach(mesh => {
+                if (mesh.userData.system === systemKey) {
+                    mesh.material.opacity = opacity;
+                }
+            });
+        }
+
+        function toggleSystemVisibility(systemKey) {
+            const sys = SYSTEMS[systemKey];
+            sys.visible = !sys.visible;
+
+            const btn = document.getElementById(`vis-btn-${systemKey}`);
+            btn.innerHTML = `<i class="fa-solid ${sys.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
+
+            anatomicalMeshMap.forEach(mesh => {
+                if (mesh.userData.system === systemKey) {
+                    mesh.visible = sys.visible;
+                }
+            });
+        }
+
+        /**
+         * Cross Section Plane Slice Tool
+         */
+        function updateCrossSection(val) {
+            const sliceVal = parseFloat(val);
+            clippingPlane.constant = sliceVal;
+            document.getElementById('slice-val').innerText = sliceVal >= 1.45 ? 'Off' : `${sliceVal.toFixed(2)}m`;
+        }
+
+        /**
+         * Exploded View Expansion Slider
+         */
+        function updateExplodedView(val) {
+            const factor = parseFloat(val);
+            document.getElementById('explode-val').innerText = `${Math.round(factor * 100)}%`;
+
+            anatomicalMeshMap.forEach(mesh => {
+                const orig = mesh.userData.originalPosition;
+                mesh.position.x = orig.x + (orig.x * factor * 1.2);
+                mesh.position.y = orig.y + ((orig.y - 0.7) * factor * 0.8);
+                mesh.position.z = orig.z + (orig.z * factor * 1.5);
+            });
+        }
+
+        /**
+         * Structure Isolation / Hiding Actions
+         */
+        function isolateSelectedStructure() {
+            if (!selectedMesh) return;
+            anatomicalMeshMap.forEach(mesh => {
+                mesh.visible = (mesh === selectedMesh);
+            });
+        }
+
+        function hideSelectedStructure() {
+            if (!selectedMesh) return;
+            selectedMesh.visible = false;
+        }
+
+        function showAllStructures() {
+            anatomicalMeshMap.forEach(mesh => {
+                mesh.visible = true;
+            });
+        }
+
+        function toggleWireframe() {
+            anatomicalMeshMap.forEach(mesh => {
+                mesh.material.wireframe = !mesh.material.wireframe;
+            });
+            document.getElementById('btn-wireframe').classList.toggle('text-sky-400');
+        }
+
+        /**
+         * Search Handler with Auto-Focus
+         */
+        function handleSearch(query) {
+            const clearBtn = document.getElementById('clear-search');
+            if (query.trim().length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+                return;
+            }
+
+            const q = query.toLowerCase();
+            const matched = ANATOMY_DATA.find(d => d.name.toLowerCase().includes(q) || d.latin.toLowerCase().includes(q));
+
+            if (matched) {
+                const mesh = anatomicalMeshMap.get(matched.id);
+                if (mesh) {
+                    mesh.visible = true;
+                    selectStructure(mesh);
+                }
+            }
+        }
+
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('clear-search').classList.add('hidden');
+        }
+
+        /**
+         * Hierarchy Tree Construction
+         */
+        function buildHierarchyTree() {
+            const treeContainer = document.getElementById('tab-tree');
+            treeContainer.innerHTML = '';
+
+            Object.keys(SYSTEMS).forEach(sysKey => {
+                const sys = SYSTEMS[sysKey];
+                const sysItems = ANATOMY_DATA.filter(d => d.system === sysKey);
+
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'space-y-1 mb-2';
+
+                groupDiv.innerHTML = `
+                    <div class="text-xs font-bold text-slate-300 py-1 px-2 bg-slate-900 rounded flex items-center space-x-2">
+                        <i class="fa-solid ${sys.icon}" style="color: ${sys.color}"></i>
+                        <span>${sys.name}</span>
+                    </div>
+                    <div class="pl-4 space-y-1 border-l border-slate-800 ml-2">
+                        ${sysItems.map(item => `
+                            <button onclick="selectStructureById('${item.id}')" class="w-full text-left text-xs text-slate-400 hover:text-sky-400 py-1 px-2 rounded hover:bg-slate-900/50 transition-colors block truncate">
+                                ${item.name}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+
+                treeContainer.appendChild(groupDiv);
+            });
+        }
+
+        function selectStructureById(id) {
+            const mesh = anatomicalMeshMap.get(id);
+            if (mesh) {
+                mesh.visible = true;
+                selectStructure(mesh);
+            }
+        }
+
+        function switchSidebarTab(tab) {
+            const sysTab = document.getElementById('tab-systems');
+            const treeTab = document.getElementById('tab-tree');
+            const sysBtn = document.getElementById('tab-systems-btn');
+            const treeBtn = document.getElementById('tab-tree-btn');
+
+            if (tab === 'systems') {
+                sysTab.classList.remove('hidden');
+                treeTab.classList.add('hidden');
+                sysBtn.className = 'flex-1 py-2.5 text-center text-sky-400 border-b-2 border-sky-400 transition-all';
+                treeBtn.className = 'flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all';
+            } else {
+                sysTab.classList.add('hidden');
+                treeTab.classList.remove('hidden');
+                treeBtn.className = 'flex-1 py-2.5 text-center text-sky-400 border-b-2 border-sky-400 transition-all';
+                sysBtn.className = 'flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all';
+            }
+        }
+
+        /**
+         * Quiz / Identification Mode Logic
+         */
+        function setAppMode(mode) {
+            appMode = mode;
+            const exploreBtn = document.getElementById('mode-explore-btn');
+            const quizBtn = document.getElementById('mode-quiz-btn');
+            const quizHud = document.getElementById('quiz-hud');
+
+            if (mode === 'quiz') {
+                exploreBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700';
+                quizBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 transition-all font-bold';
+                quizHud.classList.remove('hidden');
+                nextQuizQuestion();
+            } else {
+                quizBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700';
+                exploreBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-sky-500 text-white shadow-md shadow-sky-500/20 transition-all';
+                quizHud.classList.add('hidden');
+            }
+        }
+
+        function nextQuizQuestion() {
+            const randomIndex = Math.floor(Math.random() * ANATOMY_DATA.length);
+            currentQuizItem = ANATOMY_DATA[randomIndex];
+            document.getElementById('quiz-question').innerHTML = `Click on the: <span class="text-amber-300 underline underline-offset-4 font-bold">${currentQuizItem.name}</span>`;
+            
+            // Ensure target is visible
+            const targetMesh = anatomicalMeshMap.get(currentQuizItem.id);
+            if (targetMesh) targetMesh.visible = true;
+        }
+
+        function handleQuizSelection(mesh) {
+            if (mesh.userData.id === currentQuizItem.id) {
+                highlightMesh(mesh, 0x10b981); // Emerald pulse for correct
+                quizScore += 10;
+                document.getElementById('quiz-score').innerText = quizScore;
+                setTimeout(() => {
+                    unhighlightMesh(mesh);
+                    nextQuizQuestion();
+                }, 700);
+            } else {
+                highlightMesh(mesh, 0xf43f5e); // Red pulse for wrong
+                setTimeout(() => unhighlightMesh(mesh), 600);
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        /**
+         * Main Render & Animation Loop
+         */
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            controls.update();
+
+            // Gentle rotation animation for pulsating heart or dynamic structures
+            const heartMesh = anatomicalMeshMap.get('heart');
+            if (heartMesh) {
+                const scalePulse = 0.16 + Math.sin(time * 0.005) * 0.006;
+                heartMesh.scale.set(scalePulse, scalePulse * 1.1, scalePulse);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize application on window load
+        window.onload = function() {
+            init3D();
+            buildSystemControls();
+            buildHierarchyTree();
+        };
+    </script>
+</body>
+</html>
